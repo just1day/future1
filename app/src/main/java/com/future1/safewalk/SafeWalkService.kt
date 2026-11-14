@@ -38,11 +38,20 @@ import com.future1.safewalk.core.WalkingDetector
  * 걸음 센서 + GPS로 걷는 중인지, 화면을 쓰고 있는지, 횡단보도 근처인지를 0.5초마다 확인하고
  * 위험하면 [LockOverlay]로 화면을 덮는다.
  */
+data class LiveStatus(
+    val snapshot: Snapshot,
+    val decision: Decision,
+    val nearest: NearestCrosswalk?,
+    val simulatedWalking: Boolean,
+    val hasLocation: Boolean,
+)
+
 class SafeWalkService : Service(), SensorEventListener, LocationListener {
 
     private val handler = Handler(Looper.getMainLooper())
     private val detector = WalkingDetector()
-    private val crosswalks = CrosswalkRepository()
+    private lateinit var crosswalks: CrosswalkRepository
+    private lateinit var prefs: Prefs
     private lateinit var engine: SafetyEngine
     private lateinit var overlay: LockOverlay
     private lateinit var power: PowerManager
@@ -63,7 +72,9 @@ class SafeWalkService : Service(), SensorEventListener, LocationListener {
 
     override fun onCreate() {
         super.onCreate()
-        engine = SafetyEngine(Prefs(this).config())
+        prefs = Prefs(this)
+        crosswalks = CrosswalkRepository.get(this)
+        engine = SafetyEngine(prefs.config())
         power = getSystemService(Context.POWER_SERVICE) as PowerManager
         keyguard = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
         overlay = LockOverlay(this) {
@@ -75,7 +86,7 @@ class SafeWalkService : Service(), SensorEventListener, LocationListener {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_RELOAD) {
-            engine.config = Prefs(this).config()
+            engine.config = prefs.config()
             return START_STICKY
         }
         try {
@@ -97,7 +108,7 @@ class SafeWalkService : Service(), SensorEventListener, LocationListener {
         (getSystemService(Context.SENSOR_SERVICE) as SensorManager).unregisterListener(this)
         (getSystemService(Context.LOCATION_SERVICE) as LocationManager).removeUpdates(this)
         overlay.hide()
-        crosswalks.shutdown()
+        status = null
         super.onDestroy()
     }
 
@@ -109,14 +120,18 @@ class SafeWalkService : Service(), SensorEventListener, LocationListener {
 
         val loc = lastLocation?.takeIf { now - it.elapsedRealtimeNanos / 1_000_000 < LOCATION_STALE_MS }
         val here = loc?.let { GeoPoint(it.latitude, it.longitude) }
+        val nearest = here?.let { crosswalks.nearest(it) }
+        val simulated = now < prefs.simulateWalkingUntil
         val snapshot = Snapshot(
             nowMs = now,
-            walking = detector.isWalking(now),
+            walking = simulated || detector.isWalking(now),
             screenInUse = power.isInteractive && !keyguard.isKeyguardLocked,
-            distanceToCrosswalkM = here?.let { crosswalks.index.nearestDistanceMeters(it) },
+            distanceToCrosswalkM = nearest?.nearest?.distanceM,
             locationAccuracyM = loc?.takeIf { it.hasAccuracy() }?.accuracy?.toDouble(),
         )
-        apply(engine.evaluate(snapshot))
+        val decision = engine.evaluate(snapshot)
+        status = LiveStatus(snapshot, decision, nearest, simulated, loc != null)
+        apply(decision)
     }
 
     private fun apply(d: Decision) {
@@ -180,7 +195,7 @@ class SafeWalkService : Service(), SensorEventListener, LocationListener {
             location.takeIf { it.hasSpeed() }?.speed?.toDouble(),
             location.takeIf { it.hasAccuracy() }?.accuracy?.toDouble(),
         )
-        crosswalks.maybeRefresh(GeoPoint(location.latitude, location.longitude))
+        crosswalks.maybeRefreshOsm(GeoPoint(location.latitude, location.longitude))
     }
 
     @Deprecated("Deprecated in API 29")
@@ -220,6 +235,10 @@ class SafeWalkService : Service(), SensorEventListener, LocationListener {
         private const val LOCATION_STALE_MS = 15_000L
         private const val EMERGENCY_SUSPEND_MS = 120_000L
         const val ACTION_RELOAD = "com.future1.safewalk.RELOAD"
+
+        /** 테스트 화면에서 보여 줄 최신 판단 상태 (서비스가 꺼져 있으면 null). */
+        @Volatile var status: LiveStatus? = null
+            private set
 
         fun start(context: Context) {
             context.startForegroundService(Intent(context, SafeWalkService::class.java))
