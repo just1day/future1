@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">세이프워크</string>
+    <string name="channel_name">걷기 안전 보호</string>
+    <string name="notif_title">세이프워크가 지켜보고 있어요</string>
+    <string name="notif_text">걸으면서 폰을 보면 화면이 잠깐 잠겨요.</string>
+</resources>
