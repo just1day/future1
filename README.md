@@ -61,6 +61,14 @@ API: `https://api.data.go.kr/openapi/tn_pubr_public_crosswalk_api?serviceKey=…
 3. **🚶 걷는 중으로 가정하기 (5분)** → 걷지 않아도 잠금 화면을 시험할 수 있어요. `보호 시작` 후 켜고, 다른 앱을 열면 5초 뒤(횡단보도 근처면 즉시) 잠김
 4. **실시간 상태** → 보호 중일 때 1초마다 걷는 중 / 횡단보도 거리 / 판정이 갱신됨. 실제로 걸으며 확인하세요.
 
+## 설치 파일(APK) 받기 — Android Studio 없이
+
+코드를 올릴 때마다 GitHub Actions가 자동으로 테스트하고 APK를 만듭니다.
+
+1. GitHub 저장소 → **Actions** 탭 → 가장 위의 초록색 ✅ 실행 클릭
+2. 아래쪽 **Artifacts**의 `safewalk-debug-apk` 다운로드 → 압축 풀기 → `app-debug.apk`
+3. 휴대폰으로 옮겨 설치 (설정에서 "출처를 알 수 없는 앱 설치" 허용 필요)
+
 ## 빌드 / 실행
 
 Android Studio(최신)로 폴더를 열고 실행하거나:
